@@ -1,0 +1,26 @@
+{
+  "name": "ice-activity-map",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "ingestion": "npm run dev -w apps/ingestion",
+    "ingestion:build": "npm run build -w apps/ingestion",
+    "firehose": "npm run firehose -w apps/ingestion",
+    "api": "npm run dev -w apps/api",
+    "api:build": "npm run build -w apps/api",
+    "api:start": "npm run start -w apps/api",
+    "web": "npm run dev -w apps/web",
+    "web:build": "npm run build -w apps/web",
+    "web:preview": "npm run preview -w apps/web",
+    "db:build": "npm run build -w packages/database",
+    "db:migrate": "npm run db:migrate -w packages/database",
+    "db:migrate:phase2": "node packages/database/dist/schema/migrations-phase2.js",
+    "db:seed": "npm run db:seed -w packages/database"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

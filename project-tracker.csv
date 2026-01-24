@@ -1,0 +1,22 @@
+Phase,Task,Status,Priority,Notes
+Phase 1 - MVP,Monorepo setup with apps/ingestion,Done,High,TypeScript + npm workspaces
+Phase 1 - MVP,Bluesky search integration with keyword filtering,Done,High,English + Spanish keywords implemented
+Phase 1 - MVP,Retry logic with exponential backoff,Done,High,Includes jitter and rate limit detection
+Phase 1 - MVP,Environment configuration (.env),Done,High,POLL_INTERVAL_MS configurable
+Phase 1 - MVP,Console logging of matched posts,Done,High,Text + author + timestamp
+Phase 1 - MVP,PostgreSQL + PostGIS database setup,Done,High,packages/database with migrations
+Phase 1 - MVP,Location extraction (city + state),Done,High,Regex patterns for City ST and major cities
+Phase 1 - MVP,Geocoding pipeline (Nominatim),Done,High,1 req/sec rate limit + DB caching
+Phase 1 - MVP,Database storage of reports,Done,High,Ingestion saves to DB with dedup
+Phase 1 - MVP,Express/Fastify API endpoints,Done,Medium,apps/api with GET/POST /api/reports
+Phase 1 - MVP,React PWA setup (Vite),Done,Medium,apps/web with Vite + React 18
+Phase 1 - MVP,Leaflet map with markers,Done,Medium,CircleMarkers colored by activity type
+Phase 1 - MVP,Time range filtering (24h/week),Done,Medium,FilterPanel with time + activity filters
+Phase 1 - MVP,PWA manifest + service worker,Done,Medium,vite-plugin-pwa caches map tiles
+Phase 1 - MVP,Mobile-responsive design,Done,Medium,Tailwind CSS + touch-friendly
+Phase 2 - Post-MVP,Firehose integration (real-time),Done,Low,npm run firehose for real-time streaming
+Phase 2 - Post-MVP,User-submitted reports,Done,Low,POST /api/reports endpoint
+Phase 2 - Post-MVP,Push notifications by area,Done,Low,Web Push API with location-based subscriptions
+Phase 2 - Post-MVP,Spanish language UI,Done,Low,Full i18n with language selector
+Phase 2 - Post-MVP,Report verification workflow,Done,Low,Confirm/dispute voting with auto-status update
+Phase 2 - Post-MVP,Community moderation tools,Done,Low,Flagging + admin queue + moderation log

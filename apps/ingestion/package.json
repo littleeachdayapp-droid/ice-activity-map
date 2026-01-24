@@ -1,0 +1,27 @@
+{
+  "name": "@ice-activity-map/ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "firehose": "tsx watch src/firehose/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:firehose": "node dist/firehose/index.js"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.13.0",
+    "@atproto/common": "^0.4.0",
+    "@atproto/xrpc-server": "^0.6.0",
+    "@ice-activity-map/database": "*",
+    "dotenv": "^16.4.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
