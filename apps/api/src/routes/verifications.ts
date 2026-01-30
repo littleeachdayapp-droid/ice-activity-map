@@ -3,33 +3,51 @@ import {
   createOrUpdateVerification,
   getVerificationsForReport,
   getUserVerification,
-  deleteVerification
+  deleteVerification,
+  getReportById
 } from '@ice-activity-map/database';
+import { emitReportVerified } from '../services/websocket.js';
+import { readLimiter, verificationLimiter } from '../middleware/rateLimiter.js';
+import {
+  validateLength,
+  validateUserIdentifier,
+  sanitizeString,
+  validationError
+} from '../middleware/validation.js';
 
 const router = Router();
 
 // POST /api/reports/:id/verify - Submit verification vote
-router.post('/:reportId/verify', async (req: Request, res: Response) => {
+router.post('/:reportId/verify', verificationLimiter, async (req: Request, res: Response) => {
   try {
     const { reportId } = req.params;
     const { vote, comment, userIdentifier } = req.body;
 
-    if (!userIdentifier) {
-      return res.status(400).json({ error: 'Missing userIdentifier' });
+    // Validate userIdentifier
+    const userIdResult = validateUserIdentifier(userIdentifier);
+    if (!userIdResult.valid) return validationError(res, userIdResult.error!);
+
+    // Validate vote
+    if (!vote || !['confirm', 'dispute'].includes(vote)) {
+      return validationError(res, 'Invalid vote. Must be "confirm" or "dispute"');
     }
 
-    if (!vote || !['confirm', 'dispute'].includes(vote)) {
-      return res.status(400).json({
-        error: 'Invalid vote. Must be "confirm" or "dispute"'
-      });
-    }
+    // Validate optional comment
+    const commentResult = validateLength(comment, 'comment');
+    if (!commentResult.valid) return validationError(res, commentResult.error!);
 
     const verification = await createOrUpdateVerification({
       reportId,
-      userIdentifier,
+      userIdentifier: userIdResult.sanitized!,
       vote,
-      comment
+      comment: commentResult.sanitized ? sanitizeString(commentResult.sanitized) : undefined
     });
+
+    // Emit WebSocket event with updated report
+    const report = await getReportById(reportId);
+    if (report) {
+      emitReportVerified(report);
+    }
 
     res.status(201).json(verification);
   } catch (error) {
@@ -39,7 +57,7 @@ router.post('/:reportId/verify', async (req: Request, res: Response) => {
 });
 
 // GET /api/reports/:id/verifications - Get all verifications for a report
-router.get('/:reportId/verifications', async (req: Request, res: Response) => {
+router.get('/:reportId/verifications', readLimiter, async (req: Request, res: Response) => {
   try {
     const { reportId } = req.params;
     const verifications = await getVerificationsForReport(reportId);
@@ -62,16 +80,16 @@ router.get('/:reportId/verifications', async (req: Request, res: Response) => {
 });
 
 // GET /api/reports/:id/my-verification - Get user's verification for a report
-router.get('/:reportId/my-verification', async (req: Request, res: Response) => {
+router.get('/:reportId/my-verification', readLimiter, async (req: Request, res: Response) => {
   try {
     const { reportId } = req.params;
     const userIdentifier = req.query.userIdentifier as string;
 
-    if (!userIdentifier) {
-      return res.status(400).json({ error: 'Missing userIdentifier query param' });
-    }
+    // Validate userIdentifier
+    const userIdResult = validateUserIdentifier(userIdentifier);
+    if (!userIdResult.valid) return validationError(res, userIdResult.error!);
 
-    const verification = await getUserVerification(reportId, userIdentifier);
+    const verification = await getUserVerification(reportId, userIdResult.sanitized!);
 
     if (verification) {
       res.json(verification);
@@ -85,16 +103,16 @@ router.get('/:reportId/my-verification', async (req: Request, res: Response) => 
 });
 
 // DELETE /api/reports/:id/verify - Remove user's verification
-router.delete('/:reportId/verify', async (req: Request, res: Response) => {
+router.delete('/:reportId/verify', verificationLimiter, async (req: Request, res: Response) => {
   try {
     const { reportId } = req.params;
     const { userIdentifier } = req.body;
 
-    if (!userIdentifier) {
-      return res.status(400).json({ error: 'Missing userIdentifier' });
-    }
+    // Validate userIdentifier
+    const userIdResult = validateUserIdentifier(userIdentifier);
+    if (!userIdResult.valid) return validationError(res, userIdResult.error!);
 
-    const deleted = await deleteVerification(reportId, userIdentifier);
+    const deleted = await deleteVerification(reportId, userIdResult.sanitized!);
 
     if (deleted) {
       res.json({ message: 'Verification removed' });

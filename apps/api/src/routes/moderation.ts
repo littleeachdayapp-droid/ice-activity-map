@@ -10,14 +10,24 @@ import {
   type FlagReason,
   type FlagStatus
 } from '@ice-activity-map/database';
+import { readLimiter, verificationLimiter, adminLimiter } from '../middleware/rateLimiter.js';
+import {
+  validateLength,
+  validateUserIdentifier,
+  validatePagination,
+  timingSafeEqual,
+  sanitizeString,
+  validationError
+} from '../middleware/validation.js';
 
 const router = Router();
 
-// Middleware to check admin authentication
+// Middleware to check admin authentication with timing-safe comparison
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const adminKey = req.headers['x-admin-key'];
+  const adminKey = req.headers['x-admin-key'] as string | undefined;
+  const expectedKey = process.env.ADMIN_API_KEY;
 
-  if (adminKey !== process.env.ADMIN_API_KEY) {
+  if (!adminKey || !expectedKey || !timingSafeEqual(adminKey, expectedKey)) {
     return res.status(403).json({ error: 'Forbidden: Admin access required' });
   }
 
@@ -27,27 +37,30 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
 // ============ Public Routes ============
 
 // POST /api/reports/:id/flag - Flag a report
-router.post('/:reportId/flag', async (req: Request, res: Response) => {
+router.post('/:reportId/flag', verificationLimiter, async (req: Request, res: Response) => {
   try {
     const { reportId } = req.params;
     const { reason, details, userIdentifier } = req.body;
 
-    if (!userIdentifier) {
-      return res.status(400).json({ error: 'Missing userIdentifier' });
-    }
+    // Validate userIdentifier
+    const userIdResult = validateUserIdentifier(userIdentifier);
+    if (!userIdResult.valid) return validationError(res, userIdResult.error!);
 
+    // Validate reason
     const validReasons: FlagReason[] = ['spam', 'misinformation', 'duplicate', 'inappropriate', 'other'];
     if (!reason || !validReasons.includes(reason)) {
-      return res.status(400).json({
-        error: `Invalid reason. Must be one of: ${validReasons.join(', ')}`
-      });
+      return validationError(res, `Invalid reason. Must be one of: ${validReasons.join(', ')}`);
     }
+
+    // Validate optional details
+    const detailsResult = validateLength(details, 'details');
+    if (!detailsResult.valid) return validationError(res, detailsResult.error!);
 
     const flag = await createFlag({
       reportId,
-      userIdentifier,
+      userIdentifier: userIdResult.sanitized!,
       reason,
-      details
+      details: detailsResult.sanitized ? sanitizeString(detailsResult.sanitized) : undefined
     });
 
     res.status(201).json({
@@ -61,7 +74,7 @@ router.post('/:reportId/flag', async (req: Request, res: Response) => {
 });
 
 // GET /api/reports/:id/flags - Get flags for a report (public summary)
-router.get('/:reportId/flags', async (req: Request, res: Response) => {
+router.get('/:reportId/flags', readLimiter, async (req: Request, res: Response) => {
   try {
     const { reportId } = req.params;
     const flags = await getFlagsForReport(reportId);
@@ -86,10 +99,11 @@ router.get('/:reportId/flags', async (req: Request, res: Response) => {
 // ============ Admin Routes ============
 
 // GET /api/moderation/queue - Get pending flags queue
-router.get('/queue', requireAdmin, async (req: Request, res: Response) => {
+router.get('/queue', adminLimiter, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 50;
-    const offset = parseInt(req.query.offset as string) || 0;
+    const paginationResult = validatePagination(req.query.limit, req.query.offset, 100);
+    if (!paginationResult.valid) return validationError(res, paginationResult.error!);
+    const { limit, offset } = paginationResult.sanitized!;
 
     const { flags, total } = await getPendingFlags(limit, offset);
 
@@ -109,7 +123,7 @@ router.get('/queue', requireAdmin, async (req: Request, res: Response) => {
 });
 
 // PATCH /api/moderation/flags/:id - Update flag status
-router.patch('/flags/:flagId', requireAdmin, async (req: Request, res: Response) => {
+router.patch('/flags/:flagId', adminLimiter, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { flagId } = req.params;
     const { status, moderator } = req.body;
@@ -139,23 +153,31 @@ router.patch('/flags/:flagId', requireAdmin, async (req: Request, res: Response)
 });
 
 // POST /api/moderation/reports/:id/status - Moderate report status
-router.post('/reports/:reportId/status', requireAdmin, async (req: Request, res: Response) => {
+router.post('/reports/:reportId/status', adminLimiter, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { reportId } = req.params;
     const { status, moderator, reason } = req.body;
 
+    // Validate status
     const validStatuses = ['verified', 'disputed', 'unverified'];
     if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({
-        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
-      });
+      return validationError(res, `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
     }
 
-    if (!moderator) {
-      return res.status(400).json({ error: 'Missing moderator identifier' });
-    }
+    // Validate moderator
+    const modResult = validateUserIdentifier(moderator);
+    if (!modResult.valid) return validationError(res, `moderator: ${modResult.error}`);
 
-    await moderateReport(reportId, status, moderator, reason);
+    // Validate optional reason
+    const reasonResult = validateLength(reason, 'reason');
+    if (!reasonResult.valid) return validationError(res, reasonResult.error!);
+
+    await moderateReport(
+      reportId,
+      status,
+      modResult.sanitized!,
+      reasonResult.sanitized ? sanitizeString(reasonResult.sanitized) : undefined
+    );
 
     res.json({ message: 'Report status updated', status });
   } catch (error: unknown) {
@@ -168,7 +190,7 @@ router.post('/reports/:reportId/status', requireAdmin, async (req: Request, res:
 });
 
 // DELETE /api/moderation/reports/:id - Delete report as moderator
-router.delete('/reports/:reportId', requireAdmin, async (req: Request, res: Response) => {
+router.delete('/reports/:reportId', adminLimiter, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { reportId } = req.params;
     const { moderator, reason, hardDelete } = req.body;
@@ -199,10 +221,11 @@ router.delete('/reports/:reportId', requireAdmin, async (req: Request, res: Resp
 });
 
 // GET /api/moderation/log - Get moderation log
-router.get('/log', requireAdmin, async (req: Request, res: Response) => {
+router.get('/log', adminLimiter, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 100;
-    const offset = parseInt(req.query.offset as string) || 0;
+    const paginationResult = validatePagination(req.query.limit, req.query.offset, 500);
+    if (!paginationResult.valid) return validationError(res, paginationResult.error!);
+    const { limit, offset } = paginationResult.sanitized!;
 
     const log = await getModerationLog(limit, offset);
 

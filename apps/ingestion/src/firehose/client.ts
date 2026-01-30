@@ -1,4 +1,5 @@
 import { cborDecodeMulti } from '@atproto/common';
+import WebSocket from 'ws';
 import { SEARCH_KEYWORDS } from '../bluesky/search.js';
 
 export interface FirehosePost {
@@ -64,7 +65,9 @@ export class FirehoseClient {
 
       this.ws.onmessage = async (event) => {
         try {
-          await this.handleMessage(event.data);
+          if (typeof event.data !== 'string') {
+            await this.handleMessage(event.data);
+          }
         } catch (error) {
           console.error('[Firehose] Error handling message:', error);
         }
@@ -93,16 +96,18 @@ export class FirehoseClient {
   /**
    * Handle incoming firehose message
    */
-  private async handleMessage(data: ArrayBuffer | Blob): Promise<void> {
-    let buffer: ArrayBuffer;
+  private async handleMessage(data: Buffer | ArrayBuffer | Buffer[]): Promise<void> {
+    let uint8: Uint8Array;
 
-    if (data instanceof Blob) {
-      buffer = await data.arrayBuffer();
+    if (Buffer.isBuffer(data)) {
+      uint8 = new Uint8Array(data);
+    } else if (data instanceof ArrayBuffer) {
+      uint8 = new Uint8Array(data);
+    } else if (Array.isArray(data)) {
+      uint8 = new Uint8Array(Buffer.concat(data));
     } else {
-      buffer = data;
+      return;
     }
-
-    const uint8 = new Uint8Array(buffer);
 
     try {
       // Decode CBOR message (header + body)

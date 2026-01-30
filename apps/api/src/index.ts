@@ -1,52 +1,27 @@
 import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import { testConnection } from '@ice-activity-map/database';
-import reportsRouter from './routes/reports.js';
-import subscriptionsRouter from './routes/subscriptions.js';
-import verificationsRouter from './routes/verifications.js';
-import moderationRouter from './routes/moderation.js';
+import { createServer } from 'http';
+import { createApp } from './app.js';
+import { closePool } from '@ice-activity-map/database';
+import { logger } from './utils/logger.js';
+import { initializeWebSocket, getConnectionStats } from './services/websocket.js';
 
-const app = express();
 const PORT = process.env.PORT || 3001;
+const app = createApp();
 
-// Middleware
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'X-Admin-Key']
-}));
-app.use(express.json());
+// Create HTTP server and attach Express
+const httpServer = createServer(app);
 
-// Health check
-app.get('/health', async (_req, res) => {
-  const dbHealthy = await testConnection();
-  res.json({
-    status: dbHealthy ? 'healthy' : 'degraded',
-    database: dbHealthy ? 'connected' : 'disconnected',
-    timestamp: new Date().toISOString()
-  });
-});
+// Initialize WebSocket server
+const io = initializeWebSocket(httpServer);
 
-// Routes
-app.use('/api/reports', reportsRouter);
-app.use('/api/reports', verificationsRouter); // Nested under reports
-app.use('/api/subscriptions', subscriptionsRouter);
-app.use('/api/moderation', moderationRouter);
-
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
-
-// Error handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+// Add WebSocket stats to health endpoint
+app.get('/ws/stats', (_req, res) => {
+  res.json(getConnectionStats());
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = httpServer.listen(PORT, () => {
+  logger.info('Server started', { port: PORT });
   console.log(`
 ╔══════════════════════════════════════════════════╗
 ║       ICE Activity Map API Server                ║
@@ -62,11 +37,47 @@ app.listen(PORT, () => {
 ║    POST /api/reports/:id/flag                    ║
 ║    POST /api/subscriptions                       ║
 ║    GET  /api/subscriptions/vapid-public-key      ║
+║    GET  /api/stats                               ║
+║    POST /api/email-subscriptions                 ║
 ║                                                  ║
 ║  Admin Endpoints (X-Admin-Key header):           ║
 ║    GET  /api/moderation/queue                    ║
 ║    POST /api/moderation/reports/:id/status       ║
 ║    GET  /api/moderation/log                      ║
+║                                                  ║
+║  WebSocket: ws://localhost:${String(PORT).padEnd(24)}║
+║    GET  /ws/stats                                ║
+║                                                  ║
+║  Documentation:                                  ║
+║    GET  /api/docs                                ║
+║    GET  /api/docs.json                           ║
 ╚══════════════════════════════════════════════════╝
 `);
 });
+
+// Graceful shutdown
+const shutdown = async (signal: string) => {
+  logger.info(`Received ${signal}, starting graceful shutdown`);
+
+  server.close(async () => {
+    logger.info('HTTP server closed');
+
+    try {
+      await closePool();
+      logger.info('Database connections closed');
+    } catch (err) {
+      logger.error('Error closing database', { error: (err as Error).message });
+    }
+
+    process.exit(0);
+  });
+
+  // Force shutdown after 30 seconds
+  setTimeout(() => {
+    logger.error('Could not close connections in time, forcing shutdown');
+    process.exit(1);
+  }, 30000);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

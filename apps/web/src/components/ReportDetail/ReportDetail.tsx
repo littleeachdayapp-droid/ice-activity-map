@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Report, ACTIVITY_COLORS } from '../../types/report';
 import { useI18n, getActivityTypeLabel, getStatusLabel } from '../../i18n';
 import { VerificationPanel } from '../VerificationPanel/VerificationPanel';
 import { FlagButton } from '../FlagButton/FlagButton';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import { api } from '../../utils/api';
 
 interface ReportDetailProps {
   report: Report;
@@ -32,6 +31,51 @@ export function ReportDetail({ report, onClose }: ReportDetailProps) {
   const [userVote, setUserVote] = useState<'confirm' | 'dispute' | null>(null);
   const [confirmCount, setConfirmCount] = useState(0);
   const [disputeCount, setDisputeCount] = useState(0);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Handle keyboard events
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onClose();
+    }
+
+    // Focus trap
+    if (e.key === 'Tab' && modalRef.current) {
+      const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement?.focus();
+      } else if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement?.focus();
+      }
+    }
+  }, [onClose]);
+
+  // Focus management
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+
+    // Focus the close button
+    setTimeout(() => {
+      const closeButton = modalRef.current?.querySelector<HTMLButtonElement>('[aria-label="Close report details"]');
+      closeButton?.focus();
+    }, 10);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+      previousFocusRef.current?.focus();
+    };
+  }, [handleKeyDown]);
 
   const formatTimestamp = (date: Date) => {
     const now = new Date();
@@ -53,69 +97,91 @@ export function ReportDetail({ report, onClose }: ReportDetailProps) {
   };
 
   const handleVote = async (vote: 'confirm' | 'dispute', comment?: string) => {
-    const userIdentifier = getUserIdentifier();
-    await fetch(`${API_URL}/api/reports/${report.id}/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vote, comment, userIdentifier })
-    });
+    try {
+      const userIdentifier = getUserIdentifier();
+      await api.post(`/api/reports/${report.id}/verify`, {
+        vote,
+        comment,
+        userIdentifier
+      }, { retries: 2 });
 
-    if (userVote === 'confirm') setConfirmCount(c => c - 1);
-    if (userVote === 'dispute') setDisputeCount(c => c - 1);
+      if (userVote === 'confirm') setConfirmCount(c => c - 1);
+      if (userVote === 'dispute') setDisputeCount(c => c - 1);
 
-    setUserVote(vote);
-    if (vote === 'confirm') setConfirmCount(c => c + 1);
-    if (vote === 'dispute') setDisputeCount(c => c + 1);
+      setUserVote(vote);
+      if (vote === 'confirm') setConfirmCount(c => c + 1);
+      if (vote === 'dispute') setDisputeCount(c => c + 1);
+    } catch (err) {
+      console.error('Failed to submit vote:', err);
+    }
   };
 
   const handleRemoveVote = async () => {
-    const userIdentifier = getUserIdentifier();
-    await fetch(`${API_URL}/api/reports/${report.id}/verify`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userIdentifier })
-    });
+    try {
+      const userIdentifier = getUserIdentifier();
+      await api.delete(`/api/reports/${report.id}/verify`, { userIdentifier }, { retries: 2 });
 
-    if (userVote === 'confirm') setConfirmCount(c => c - 1);
-    if (userVote === 'dispute') setDisputeCount(c => c - 1);
-    setUserVote(null);
+      if (userVote === 'confirm') setConfirmCount(c => c - 1);
+      if (userVote === 'dispute') setDisputeCount(c => c - 1);
+      setUserVote(null);
+    } catch (err) {
+      console.error('Failed to remove vote:', err);
+    }
   };
 
   const handleFlag = async (reason: string, details?: string) => {
-    const userIdentifier = getUserIdentifier();
-    await fetch(`${API_URL}/api/reports/${report.id}/flag`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason, details, userIdentifier })
-    });
+    try {
+      const userIdentifier = getUserIdentifier();
+      await api.post(`/api/moderation/${report.id}/flag`, {
+        reason,
+        details,
+        userIdentifier
+      }, { retries: 2 });
+    } catch (err) {
+      console.error('Failed to flag report:', err);
+    }
   };
 
+  const activityLabel = getActivityTypeLabel(report.activityType, language);
+  const titleId = `report-detail-title-${report.id}`;
+
   return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 z-[2000] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50"
         onClick={onClose}
+        aria-hidden="true"
       />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div
+        ref={modalRef}
+        className="relative bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-3">
             <span
               className="w-4 h-4 rounded-full"
               style={{ backgroundColor: ACTIVITY_COLORS[report.activityType] }}
+              aria-hidden="true"
             />
-            <h2 className="text-lg font-semibold">
-              {getActivityTypeLabel(report.activityType, language)}
+            <h2 id={titleId} className="text-lg font-semibold">
+              {activityLabel}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Close report details"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -151,7 +217,10 @@ export function ReportDetail({ report, onClose }: ReportDetailProps) {
 
           {/* Status badge */}
           <div>
-            <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${STATUS_STYLES[report.status]}`}>
+            <span
+              className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${STATUS_STYLES[report.status]}`}
+              role="status"
+            >
               {getStatusLabel(report.status, language)}
             </span>
           </div>

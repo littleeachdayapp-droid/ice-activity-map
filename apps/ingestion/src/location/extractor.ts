@@ -1,3 +1,5 @@
+import { fuzzyMatchCity, normalizeCity, getDefaultState } from '../geocoding/fuzzy.js';
+
 // US State abbreviations and full names
 const STATE_ABBREVIATIONS: Record<string, string> = {
   'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
@@ -19,7 +21,7 @@ const STATE_ABBREVIATIONS: Record<string, string> = {
 const STATE_NAMES = Object.values(STATE_ABBREVIATIONS);
 const STATE_ABBR_PATTERN = Object.keys(STATE_ABBREVIATIONS).join('|');
 
-// Major US cities for quick matching
+// Major US cities for quick matching (includes border cities)
 const MAJOR_CITIES = [
   'Los Angeles', 'New York', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia',
   'San Antonio', 'San Diego', 'Dallas', 'San Jose', 'Austin', 'Jacksonville',
@@ -38,7 +40,11 @@ const MAJOR_CITIES = [
   'Madison', 'Lubbock', 'Scottsdale', 'Reno', 'Buffalo', 'Gilbert', 'Glendale',
   'North Las Vegas', 'Winston-Salem', 'Chesapeake', 'Norfolk', 'Fremont',
   'Garland', 'Irving', 'Hialeah', 'Richmond', 'Boise', 'Spokane', 'Baton Rouge',
-  'San Ysidro', 'El Centro', 'McAllen', 'Brownsville'
+  // Border cities (high priority for immigration reports)
+  'San Ysidro', 'El Centro', 'McAllen', 'Brownsville', 'Calexico', 'Nogales',
+  'Yuma', 'Douglas', 'Del Rio', 'Eagle Pass', 'Roma', 'Hidalgo', 'Pharr',
+  'Harlingen', 'Edinburg', 'Mission', 'Weslaco', 'Rio Grande City', 'Presidio',
+  'Fabens', 'San Luis', 'Lukeville', 'Sasabe', 'Naco'
 ];
 
 export interface ExtractedLocation {
@@ -74,16 +80,62 @@ export function extractLocation(text: string): ExtractedLocation | null {
     };
   }
 
-  // Pattern 2: Known major city names
+  // Pattern 2: Known major city names (exact match)
   for (const city of MAJOR_CITIES) {
     const cityPattern = new RegExp(`\\b${escapeRegex(city)}\\b`, 'i');
     if (cityPattern.test(normalizedText)) {
+      // Try to get default state for this city
+      const defaultState = getDefaultState(city);
       return {
-        city,
-        state: null, // Will need geocoding to determine state
-        confidence: 'medium',
+        city: normalizeCity(city),
+        state: defaultState,
+        confidence: defaultState ? 'high' : 'medium',
         rawMatch: city
       };
+    }
+  }
+
+  // Pattern 2b: Fuzzy match for common misspellings and abbreviations
+  const words = normalizedText.split(/\s+/);
+  for (let i = 0; i < words.length; i++) {
+    // Try single word
+    const singleWord = words[i].replace(/[,.:;!?]/g, '');
+    const fuzzyResult = fuzzyMatchCity(singleWord);
+    if (fuzzyResult && fuzzyResult.score >= 0.9) {
+      return {
+        city: fuzzyResult.city,
+        state: fuzzyResult.state,
+        confidence: fuzzyResult.score >= 0.95 ? 'high' : 'medium',
+        rawMatch: singleWord
+      };
+    }
+
+    // Try two-word combinations (e.g., "Los Angeles", "San Francisco")
+    if (i < words.length - 1) {
+      const twoWords = `${words[i]} ${words[i + 1]}`.replace(/[,.:;!?]/g, '');
+      const fuzzyResult2 = fuzzyMatchCity(twoWords);
+      if (fuzzyResult2 && fuzzyResult2.score >= 0.85) {
+        return {
+          city: fuzzyResult2.city,
+          state: fuzzyResult2.state,
+          confidence: fuzzyResult2.score >= 0.95 ? 'high' : 'medium',
+          rawMatch: twoWords
+        };
+      }
+    }
+
+    // Try three-word combinations (e.g., "New York City", "Salt Lake City")
+    if (i < words.length - 2) {
+      const threeWords = `${words[i]} ${words[i + 1]} ${words[i + 2]}`.replace(/[,.:;!?]/g, '');
+      const fuzzyResult3 = fuzzyMatchCity(threeWords);
+      if (fuzzyResult3 && fuzzyResult3.score >= 0.85) {
+        return {
+          city: fuzzyResult3.city,
+          state: fuzzyResult3.state,
+          confidence: fuzzyResult3.score >= 0.95 ? 'high' : 'medium',
+          rawMatch: threeWords
+        };
+      }
     }
   }
 

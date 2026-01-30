@@ -1,0 +1,26 @@
+# Fly.io configuration for ICE Activity Map Ingestion Service
+# Deploy with: fly deploy --config apps/ingestion/fly.toml
+
+app = "ice-activity-map-ingestion"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  POLL_INTERVAL_MS = "60000"
+  ENABLE_BLUESKY = "true"
+  ENABLE_MASTODON = "true"
+  ENABLE_REDDIT = "true"
+  ENABLE_GOOGLE_NEWS = "true"
+
+# No HTTP service - this is a background worker
+# But we add a simple health check process
+
+[processes]
+  worker = "node apps/ingestion/dist/index.js"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

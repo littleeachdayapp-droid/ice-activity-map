@@ -18,9 +18,25 @@
     "db:build": "npm run build -w packages/database",
     "db:migrate": "npm run db:migrate -w packages/database",
     "db:migrate:phase2": "node packages/database/dist/schema/migrations-phase2.js",
-    "db:seed": "npm run db:seed -w packages/database"
+    "db:seed": "npm run db:seed -w packages/database",
+    "db:migrate:phase3": "node packages/database/dist/schema/migrations-phase3.js",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "build:all": "npm run build -w packages/database && npm run build -w apps/api && npm run build -w apps/ingestion && npm run build -w apps/web",
+    "lint": "echo 'Add eslint here'",
+    "deploy": "./scripts/deploy-init.sh",
+    "deploy:api": "fly deploy --config fly.toml --remote-only",
+    "deploy:ingestion": "fly deploy --config apps/ingestion/fly.toml --remote-only",
+    "deploy:web": "cd apps/web && vercel --prod",
+    "logs:api": "fly logs --app ice-activity-map-api",
+    "logs:ingestion": "fly logs --app ice-activity-map-ingestion"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "vitest": "^4.0.18"
   }
 }

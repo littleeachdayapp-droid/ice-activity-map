@@ -29,22 +29,24 @@ export function FilterPanel({ filters, onChange, isOpen, onToggle }: FilterPanel
     onChange({ ...filters, activityTypes: newTypes });
   };
 
-  return (
-    <div className="absolute top-4 right-4 z-[1000]">
-      <button
-        onClick={onToggle}
-        className="bg-white px-4 py-2 rounded-lg shadow-lg font-medium hover:bg-gray-50 transition-colors"
-      >
-        {isOpen ? t.closeFilters : t.filters}
-      </button>
+  const panelId = 'filter-panel';
 
-      {isOpen && (
-        <div className="mt-2 bg-white rounded-lg shadow-lg p-4 min-w-[240px]">
+  if (!isOpen) return null;
+
+  return (
+    <div className="absolute top-14 right-4 z-[1000]">
+      <div
+        id={panelId}
+        className="bg-white rounded-lg shadow-lg p-4 min-w-[240px]"
+        role="region"
+        aria-label={t.filters}
+      >
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="time-range-select" className="block text-sm font-medium text-gray-700 mb-1">
               {t.timeRange}
             </label>
             <select
+              id="time-range-select"
               value={filters.timeRange}
               onChange={handleTimeRangeChange}
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -57,11 +59,11 @@ export function FilterPanel({ filters, onChange, isOpen, onToggle }: FilterPanel
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <fieldset>
+            <legend className="block text-sm font-medium text-gray-700 mb-2">
               {t.activityTypes}
-            </label>
-            <div className="space-y-2">
+            </legend>
+            <div className="space-y-2" role="group">
               {ACTIVITY_TYPE_KEYS.map(type => (
                 <label key={type} className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -73,6 +75,7 @@ export function FilterPanel({ filters, onChange, isOpen, onToggle }: FilterPanel
                   <span
                     className="w-3 h-3 rounded-full"
                     style={{ backgroundColor: ACTIVITY_COLORS[type] }}
+                    aria-hidden="true"
                   />
                   <span className="text-sm text-gray-700">
                     {getActivityTypeLabel(type, language)}
@@ -80,9 +83,8 @@ export function FilterPanel({ filters, onChange, isOpen, onToggle }: FilterPanel
                 </label>
               ))}
             </div>
-          </div>
+          </fieldset>
         </div>
-      )}
     </div>
   );
 }
