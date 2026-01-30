@@ -3,6 +3,7 @@ import { searchAllKeywords, type BlueskyPost } from "./bluesky/search.js";
 import { searchAllInstances, type MastodonPost } from "./mastodon/search.js";
 import { searchReddit, type RedditPost } from "./reddit/search.js";
 import { searchGoogleNews, type GoogleNewsArticle } from "./google-news/search.js";
+import { searchWiki, type WikiArticle } from "./wiki/search.js";
 import { extractLocation, detectActivityType } from "./location/extractor.js";
 import { geocode, geocodeCityState } from "./geocoding/nominatim.js";
 import { createReport, getReportBySourceId, testConnection } from "@ice-activity-map/database";
@@ -19,6 +20,7 @@ const ENABLE_BLUESKY = process.env.ENABLE_BLUESKY !== "false";
 const ENABLE_MASTODON = process.env.ENABLE_MASTODON !== "false";
 const ENABLE_REDDIT = process.env.ENABLE_REDDIT !== "false";
 const ENABLE_GOOGLE_NEWS = process.env.ENABLE_GOOGLE_NEWS !== "false";
+const ENABLE_WIKI = process.env.ENABLE_WIKI !== "false";
 
 // Persistent dedup (L1 memory + L2 DB)
 const dedup = new PersistentDedup(ENABLE_DB);
@@ -29,7 +31,7 @@ const health = new SourceHealthTracker();
 // Daily cleanup interval for dedup cache
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-type SourceType = "bluesky" | "mastodon" | "reddit" | "google_news";
+type SourceType = "bluesky" | "mastodon" | "reddit" | "google_news" | "wiki";
 type Category = "social" | "news";
 
 interface NormalizedPost {
@@ -104,6 +106,19 @@ function normalizeGoogleNewsArticle(article: GoogleNewsArticle): NormalizedPost 
     authorDisplayName: article.source,
     createdAt: article.pubDate,
     url: article.link,
+    category: "news"
+  };
+}
+
+function normalizeWikiArticle(article: WikiArticle): NormalizedPost {
+  return {
+    sourceType: "wiki",
+    sourceId: article.id,
+    text: `${article.title}\n\n${article.description}`,
+    authorHandle: "wiki.icelist.is",
+    authorDisplayName: "ICE List Wiki",
+    createdAt: new Date(article.date + "T00:00:00Z").toISOString(),
+    url: article.url,
     category: "news"
   };
 }
@@ -188,7 +203,8 @@ function formatProcessedPost(processed: ProcessedPost): string {
     bluesky: "🦋",
     mastodon: "🐘",
     reddit: "🔴",
-    google_news: "📰"
+    google_news: "📰",
+    wiki: "📋"
   }[post.sourceType];
 
   return `
@@ -244,6 +260,9 @@ async function pollAllSources(): Promise<void> {
     pollSource("Google News", ENABLE_GOOGLE_NEWS, async () =>
       (await searchGoogleNews()).map(normalizeGoogleNewsArticle)
     ),
+    pollSource("Wiki", ENABLE_WIKI, async () =>
+      (await searchWiki()).map(normalizeWikiArticle)
+    ),
   ]);
 
   const allPosts = results.flatMap((r) =>
@@ -256,7 +275,7 @@ async function pollAllSources(): Promise<void> {
   let filteredOut = 0;
   let savedCount = 0;
   let needsReviewCount = 0;
-  const sourceCounts: Record<SourceType, number> = { bluesky: 0, mastodon: 0, reddit: 0, google_news: 0 };
+  const sourceCounts: Record<SourceType, number> = { bluesky: 0, mastodon: 0, reddit: 0, google_news: 0, wiki: 0 };
 
   for (const post of allPosts) {
     // Persistent dedup check
@@ -329,6 +348,7 @@ async function pollAllSources(): Promise<void> {
     ENABLE_MASTODON && `M:${sourceCounts.mastodon}`,
     ENABLE_REDDIT && `R:${sourceCounts.reddit}`,
     ENABLE_GOOGLE_NEWS && `N:${sourceCounts.google_news}`,
+    ENABLE_WIKI && `W:${sourceCounts.wiki}`,
   ].filter(Boolean).join(" ");
 
   const reviewStr = needsReviewCount > 0 ? ` (${needsReviewCount} needs_review)` : "";
@@ -342,7 +362,8 @@ async function main(): Promise<void> {
     ENABLE_BLUESKY && "Bluesky",
     ENABLE_MASTODON && "Mastodon",
     ENABLE_REDDIT && "Reddit",
-    ENABLE_GOOGLE_NEWS && "Google News"
+    ENABLE_GOOGLE_NEWS && "Google News",
+    ENABLE_WIKI && "Wiki"
   ].filter(Boolean).join(", ") || "None";
 
   console.log("╔══════════════════════════════════════════════════╗");
