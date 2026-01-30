@@ -13,7 +13,9 @@ interface ReportRow {
   longitude: number | null;
   author_handle: string;
   author_display_name: string | null;
+  photo_url: string | null;
   status: string;
+  metadata: Record<string, unknown> | null;
   reported_at: Date;
   created_at: Date;
   updated_at: Date;
@@ -32,7 +34,9 @@ function rowToReport(row: ReportRow): Report {
     longitude: row.longitude,
     authorHandle: row.author_handle,
     authorDisplayName: row.author_display_name,
+    photoUrl: row.photo_url,
     status: row.status as Report['status'],
+    metadata: row.metadata ?? {},
     reportedAt: row.reported_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -44,20 +48,20 @@ export async function createReport(input: CreateReportInput): Promise<Report> {
     `INSERT INTO reports (
       source_type, source_id, activity_type, description,
       city, state, location, author_handle, author_display_name,
-      status, reported_at
+      photo_url, status, metadata, reported_at
     ) VALUES (
       $1, $2, $3, $4, $5, $6,
       CASE WHEN $7::float IS NOT NULL AND $8::float IS NOT NULL
         THEN ST_SetSRID(ST_MakePoint($7, $8), 4326)::geography
         ELSE NULL
       END,
-      $9, $10, $11, $12
+      $9, $10, $11, $12, $13::jsonb, $14
     ) RETURNING
       id, source_type, source_id, activity_type, description,
       city, state,
       ST_Y(location::geometry) as latitude,
       ST_X(location::geometry) as longitude,
-      author_handle, author_display_name, status, reported_at, created_at, updated_at`,
+      author_handle, author_display_name, photo_url, status, metadata, reported_at, created_at, updated_at`,
     [
       input.sourceType,
       input.sourceId || null,
@@ -69,7 +73,9 @@ export async function createReport(input: CreateReportInput): Promise<Report> {
       input.latitude || null,
       input.authorHandle,
       input.authorDisplayName || null,
+      input.photoUrl || null,
       input.status || 'unverified',
+      JSON.stringify(input.metadata || {}),
       input.reportedAt
     ]
   );
@@ -83,7 +89,7 @@ export async function getReportById(id: string): Promise<Report | null> {
       city, state,
       ST_Y(location::geometry) as latitude,
       ST_X(location::geometry) as longitude,
-      author_handle, author_display_name, status, reported_at, created_at, updated_at
+      author_handle, author_display_name, photo_url, status, metadata, reported_at, created_at, updated_at
     FROM reports WHERE id = $1`,
     [id]
   );
@@ -97,7 +103,7 @@ export async function getReportBySourceId(sourceType: string, sourceId: string):
       city, state,
       ST_Y(location::geometry) as latitude,
       ST_X(location::geometry) as longitude,
-      author_handle, author_display_name, status, reported_at, created_at, updated_at
+      author_handle, author_display_name, photo_url, status, metadata, reported_at, created_at, updated_at
     FROM reports WHERE source_type = $1 AND source_id = $2`,
     [sourceType, sourceId]
   );
@@ -126,10 +132,16 @@ export async function getReports(
     paramIndex++;
   }
 
-  // Time range filter
+  // Time range filter - use parameterized timestamp instead of INTERVAL string interpolation
   if (filters.timeRange && filters.timeRange !== 'all') {
-    const hours = { '24h': 24, '7d': 168, '30d': 720 }[filters.timeRange];
-    conditions.push(`reported_at > NOW() - INTERVAL '${hours} hours'`);
+    const hoursMap: Record<string, number> = { '24h': 24, '7d': 168, '30d': 720 };
+    const hours = hoursMap[filters.timeRange];
+    if (hours !== undefined) {
+      const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000);
+      conditions.push(`reported_at > $${paramIndex}`);
+      params.push(cutoffDate);
+      paramIndex++;
+    }
   }
 
   // Bounding box filter
@@ -164,7 +176,7 @@ export async function getReports(
       city, state,
       ST_Y(location::geometry) as latitude,
       ST_X(location::geometry) as longitude,
-      author_handle, author_display_name, status, reported_at, created_at, updated_at
+      author_handle, author_display_name, photo_url, status, metadata, reported_at, created_at, updated_at
     FROM reports
     ${whereClause}
     ORDER BY reported_at DESC
@@ -188,7 +200,7 @@ export async function updateReportStatus(id: string, status: Report['status']): 
       city, state,
       ST_Y(location::geometry) as latitude,
       ST_X(location::geometry) as longitude,
-      author_handle, author_display_name, status, reported_at, created_at, updated_at`,
+      author_handle, author_display_name, photo_url, status, metadata, reported_at, created_at, updated_at`,
     [status, id]
   );
   return result.rows[0] ? rowToReport(result.rows[0]) : null;

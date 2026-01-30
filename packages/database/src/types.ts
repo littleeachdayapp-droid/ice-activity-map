@@ -1,6 +1,6 @@
 export type ActivityType = 'raid' | 'checkpoint' | 'arrest' | 'surveillance' | 'other';
 export type ReportStatus = 'unverified' | 'verified' | 'disputed';
-export type ReportSource = 'bluesky' | 'user_submitted';
+export type ReportSource = 'bluesky' | 'mastodon' | 'reddit' | 'google_news' | 'user_submitted';
 
 export interface Report {
   id: string;
@@ -14,7 +14,9 @@ export interface Report {
   longitude: number | null;
   authorHandle: string;
   authorDisplayName: string | null;
+  photoUrl: string | null;
   status: ReportStatus;
+  metadata: Record<string, unknown>;
   reportedAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -31,7 +33,9 @@ export interface CreateReportInput {
   longitude?: number;
   authorHandle: string;
   authorDisplayName?: string;
+  photoUrl?: string;
   status?: ReportStatus;
+  metadata?: Record<string, unknown>;
   reportedAt: Date;
 }
 
