@@ -9,6 +9,7 @@
     "dev": "tsc --watch",
     "db:migrate": "node dist/schema/migrate.js",
     "db:migrate:phase4": "node dist/schema/migrations-phase4.js",
+    "db:migrate:phase5": "node dist/schema/migrations-phase5.js",
     "db:seed": "node dist/schema/seed.js"
   },
   "dependencies": {
