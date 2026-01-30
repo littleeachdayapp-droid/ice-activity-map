@@ -22,6 +22,19 @@ export interface Report {
   status: ReportStatus;
 }
 
+export interface ListReport {
+  id: string;
+  activityType: ActivityType;
+  city: string | null;
+  state: string | null;
+  description: string;
+  timestamp: Date;
+  author: string;
+  status: ReportStatus;
+  sourceType: string;
+  hasLocation: boolean;
+}
+
 export interface FilterState {
   timeRange: '24h' | '7d' | '30d' | 'all';
   activityTypes: ActivityType[];

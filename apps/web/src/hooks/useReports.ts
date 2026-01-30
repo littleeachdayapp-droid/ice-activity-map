@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Report, FilterState } from '../types/report';
+import { Report, FilterState, ListReport } from '../types/report';
 import { mockReports } from '../data/mockReports';
 import { useSocket } from './useSocket';
 import { api, isApiError, getErrorMessage } from '../utils/api';
@@ -38,6 +38,21 @@ interface ApiResponse {
   };
 }
 
+function apiReportToListReport(apiRpt: ApiReport): ListReport {
+  return {
+    id: apiRpt.id,
+    activityType: apiRpt.activityType as ListReport['activityType'],
+    city: apiRpt.city,
+    state: apiRpt.state,
+    description: apiRpt.description,
+    timestamp: new Date(apiRpt.reportedAt),
+    author: apiRpt.authorDisplayName || apiRpt.authorHandle,
+    status: apiRpt.status as ListReport['status'],
+    sourceType: apiRpt.sourceType,
+    hasLocation: apiRpt.latitude !== null && apiRpt.longitude !== null,
+  };
+}
+
 function apiReportToReport(api: ApiReport): Report | null {
   // Skip reports without coordinates
   if (api.latitude === null || api.longitude === null) {
@@ -62,6 +77,7 @@ function apiReportToReport(api: ApiReport): Report | null {
 
 export function useReports(filters: FilterState) {
   const [reports, setReports] = useState<Report[]>([]);
+  const [allReports, setAllReports] = useState<ListReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [usingMockData, setUsingMockData] = useState(false);
@@ -169,7 +185,10 @@ export function useReports(filters: FilterState) {
         .map(apiReportToReport)
         .filter((r): r is Report => r !== null);
 
+      const mappedAllReports = data.reports.map(apiReportToListReport);
+
       setReports(mappedReports);
+      setAllReports(mappedAllReports);
       setUsingMockData(false);
       setError(null);
 
@@ -261,8 +280,12 @@ export function useReports(filters: FilterState) {
     fetchReports();
   }, [fetchReports]);
 
+  const unmappedCount = allReports.length - reports.length;
+
   return {
     reports,
+    allReports,
+    unmappedCount,
     loading,
     error,
     usingMockData,

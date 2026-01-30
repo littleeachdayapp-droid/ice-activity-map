@@ -73,6 +73,13 @@ export interface Translations {
   radiusKm: string;
   selectActivityTypes: string;
 
+  // Report list panel
+  reportList: string;
+  locationUnknown: string;
+  onMap: string;
+  totalReports: string;
+  noMapPin: string;
+
   // Errors
   errorLoadingReports: string;
   errorSubmitting: string;
@@ -231,6 +238,13 @@ export const translations: Record<Language, Translations> = {
     radiusKm: 'Radius (km)',
     selectActivityTypes: 'Activity types to notify',
 
+    // Report list panel
+    reportList: 'All Reports',
+    locationUnknown: 'Location unknown',
+    onMap: 'on map',
+    totalReports: 'total',
+    noMapPin: 'No map pin',
+
     // Errors
     errorLoadingReports: 'Error loading reports',
     errorSubmitting: 'Error submitting',
@@ -387,6 +401,13 @@ export const translations: Record<Language, Translations> = {
     notifyForArea: 'Notificarme de actividad en esta área',
     radiusKm: 'Radio (km)',
     selectActivityTypes: 'Tipos de actividad a notificar',
+
+    // Report list panel
+    reportList: 'Todos los Reportes',
+    locationUnknown: 'Ubicación desconocida',
+    onMap: 'en mapa',
+    totalReports: 'total',
+    noMapPin: 'Sin ubicación',
 
     // Errors
     errorLoadingReports: 'Error al cargar reportes',

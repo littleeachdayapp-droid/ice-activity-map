@@ -8,6 +8,7 @@ import { Analytics } from './components/Analytics/Analytics';
 import { EmailSubscription } from './components/EmailSubscription/EmailSubscription';
 import { LanguageSelector } from './components/LanguageSelector/LanguageSelector';
 import { NotificationButton } from './components/NotificationButton/NotificationButton';
+import { ReportList } from './components/ReportList/ReportList';
 import { useReports } from './hooks/useReports';
 import { Report, FilterState, ActivityType } from './types/report';
 import { I18nProvider, useI18n } from './i18n';
@@ -29,8 +30,9 @@ function AppContent() {
     activityTypes: ALL_ACTIVITY_TYPES
   });
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [listPanelOpen, setListPanelOpen] = useState(false);
 
-  const { reports, loading, usingMockData, refetch, connected, newReportCount } = useReports(filters);
+  const { reports, allReports, unmappedCount, loading, usingMockData, refetch, connected, newReportCount } = useReports(filters);
 
   return (
     <div className="h-screen w-screen relative">
@@ -116,9 +118,21 @@ function AppContent() {
         onToggle={() => setFilterPanelOpen(!filterPanelOpen)}
       />
 
-      {/* View toggle (Markers/Heatmap) */}
+      {/* View toggle (Markers/Heatmap/List) */}
       <div className="absolute top-20 right-4 z-[1000]" role="group" aria-label="Map view options">
         <div className="bg-white rounded-lg shadow-lg p-1 flex flex-col gap-1">
+          <button
+            onClick={() => setListPanelOpen(!listPanelOpen)}
+            className={`p-2 rounded transition-colors flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              listPanelOpen ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100 text-gray-600'
+            }`}
+            aria-label={t.reportList}
+            aria-pressed={listPanelOpen}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+          </button>
           <button
             onClick={() => setShowHeatmap(false)}
             className={`p-2 rounded transition-colors flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -162,11 +176,30 @@ function AppContent() {
         </div>
       </div>
 
+      {/* Report list panel */}
+      {listPanelOpen && (
+        <ReportList
+          allReports={allReports}
+          mappedCount={reports.length}
+          onClose={() => setListPanelOpen(false)}
+          onSelectReport={(id) => {
+            const report = reports.find(r => r.id === id);
+            if (report) {
+              setSelectedReport(report);
+              setMapCenter(report.location);
+            }
+            setListPanelOpen(false);
+          }}
+        />
+      )}
+
       {/* Report count badge */}
       <div className="absolute bottom-4 left-4 z-[1000] bg-white px-3 py-2 rounded-lg shadow-lg" role="status" aria-live="polite">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-700">
-            {loading ? t.loading : `${reports.length} ${reports.length !== 1 ? t.reports : t.report}`}
+            {loading ? t.loading : unmappedCount > 0
+              ? `${reports.length} ${t.onMap} · ${allReports.length} ${t.totalReports}`
+              : `${reports.length} ${reports.length !== 1 ? t.reports : t.report}`}
           </span>
           {usingMockData && (
             <span className="text-xs text-amber-600">{t.demoData}</span>
